@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from sklearn.cluster import AgglomerativeClustering
 from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import AgglomerativeClustering
 
-# Load dataset
-df = pd.read_csv("data/Mall_Customers.csv")
+# Load Dataset
+df = pd.read_csv("Mall_Customers.csv")
 
 # Features
 X = df[
@@ -29,15 +29,20 @@ hc = AgglomerativeClustering(
 
 clusters = hc.fit_predict(X_scaled)
 
-# Add cluster column
 df["Cluster"] = clusters
 
 # Streamlit UI
-st.title("Hierarchical Clustering")
+st.set_page_config(
+    page_title="Hierarchical Clustering",
+    page_icon="📊"
+)
 
-st.write("Customer Segmentation using Hierarchical Clustering")
+st.title("📊 Customer Segmentation using Hierarchical Clustering")
 
-st.dataframe(df.head())
+st.write("Mall Customer Segmentation Project")
+
+if st.checkbox("Show Dataset"):
+    st.dataframe(df.head())
 
 income = st.number_input(
     "Annual Income (k$)",
@@ -64,9 +69,9 @@ if st.button("Predict Cluster"):
         axis=1
     )
 
-    idx = np.argmin(distances)
+    nearest_index = np.argmin(distances)
 
-    predicted_cluster = clusters[idx]
+    predicted_cluster = clusters[nearest_index]
 
     st.success(
         f"Customer belongs to Cluster {predicted_cluster}"
