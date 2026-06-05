@@ -1,78 +1,310 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import pickle
+import matplotlib.pyplot as plt
 
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import AgglomerativeClustering
+from scipy.cluster.hierarchy import linkage, dendrogram
+from scipy.spatial.distance import cdist
 
-# Load Dataset
-df = pd.read_csv("Mall_Customers.csv")
+# ==========================================
+# PAGE CONFIG
+# ==========================================
 
-# Features
-X = df[
-    [
+st.set_page_config(
+    page_title="Hierarchical Clustering Dashboard",
+    page_icon="🌳",
+    layout="wide"
+)
+
+# ==========================================
+# LOAD DATA
+# ==========================================
+
+df = pd.read_csv("data/Mall_Customers.csv")
+
+scaler = pickle.load(open("models/scaler.pkl", "rb"))
+
+cluster_centers = pickle.load(
+    open("models/cluster_centers.pkl", "rb")
+)
+
+# ==========================================
+# CUSTOM CSS
+# ==========================================
+
+st.markdown("""
+<style>
+
+.stApp{
+    background-color:#F4F7FC;
+}
+
+h1,h2,h3{
+    color:#1F2937 !important;
+}
+
+p,label{
+    color:#374151 !important;
+}
+
+.stButton > button{
+    width:100%;
+    height:3rem;
+    border-radius:12px;
+    font-size:18px;
+    font-weight:600;
+
+    background-color:#C7D2FE !important;   /* pastel lavender */
+    color:#312E81 !important;
+    border:none;
+}
+
+.stButton > button:hover{
+    background-color:#A5B4FC !important;
+    color:#1E1B4B !important;
+}
+
+.custom-card{
+    padding:18px;
+    border-radius:12px;
+    margin-top:10px;
+}
+
+.success-card{
+    background:#DCFCE7;
+    color:#166534;
+    font-weight:bold;
+}
+
+.info-card{
+    background:#DBEAFE;
+    color:#1E40AF;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# TITLE
+# ==========================================
+
+st.title("🌳 Hierarchical Clustering Dashboard")
+
+st.markdown("""
+Customer segmentation using
+**Agglomerative Hierarchical Clustering**
+""")
+
+# ==========================================
+# METRICS
+# ==========================================
+
+c1,c2 = st.columns(2)
+
+with c1:
+    st.metric("Total Customers", len(df))
+
+with c2:
+    st.metric("Clusters", len(cluster_centers))
+
+st.divider()
+
+# ==========================================
+# INPUTS
+# ==========================================
+
+st.subheader("🔍 Predict Customer Segment")
+
+col1,col2 = st.columns(2)
+
+with col1:
+    income = st.slider(
         "Annual Income (k$)",
-        "Spending Score (1-100)"
-    ]
+        0,
+        150,
+        60
+    )
+
+with col2:
+    score = st.slider(
+        "Spending Score",
+        1,
+        100,
+        50
+    )
+
+# ==========================================
+# PREDICTION
+# ==========================================
+
+if st.button("Predict Segment"):
+
+    sample = np.array([[income, score]])
+
+    distances = cdist(
+        sample,
+        cluster_centers.values,
+        metric='euclidean'
+    )
+
+    cluster = np.argmin(distances)
+
+    st.markdown(
+        f"""
+        <div class="custom-card success-card">
+        Predicted Cluster : {cluster}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"""
+        <div class="custom-card info-card">
+        Customer belongs to Segment {cluster}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ==========================================
+# SCATTER PLOT
+# ==========================================
+
+st.subheader("📈 Customer Segments")
+
+clusters = []
+
+for _, row in df.iterrows():
+
+    point = np.array([
+        [row['Annual Income (k$)'],
+         row['Spending Score (1-100)']]
+    ])
+
+    d = cdist(
+        point,
+        cluster_centers.values,
+        metric='euclidean'
+    )
+
+    clusters.append(np.argmin(d))
+
+fig, ax = plt.subplots(figsize=(10,6))
+
+scatter = ax.scatter(
+    df['Annual Income (k$)'],
+    df['Spending Score (1-100)'],
+    c=clusters,
+    s=80
+)
+
+ax.scatter(
+    income,
+    score,
+    color='red',
+    marker='X',
+    s=300,
+    label='Selected Customer'
+)
+
+ax.set_title(
+    "Hierarchical Customer Segmentation"
+)
+
+ax.set_xlabel(
+    "Annual Income (k$)"
+)
+
+ax.set_ylabel(
+    "Spending Score"
+)
+
+ax.legend()
+
+st.pyplot(fig)
+
+# ==========================================
+# DENDROGRAM
+# ==========================================
+
+st.subheader("🌳 Dendrogram")
+
+sample_df = df.sample(
+    50,
+    random_state=42
+)
+
+X = sample_df[
+    ['Annual Income (k$)',
+     'Spending Score (1-100)']
 ]
 
-# Scaling
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
+X_scaled = scaler.transform(X)
 
-# Hierarchical Clustering
-hc = AgglomerativeClustering(
-    n_clusters=5,
-    metric="euclidean",
-    linkage="ward"
+fig2, ax2 = plt.subplots(
+    figsize=(12,5)
 )
 
-clusters = hc.fit_predict(X_scaled)
-
-df["Cluster"] = clusters
-
-# Streamlit UI
-st.set_page_config(
-    page_title="Hierarchical Clustering",
-    page_icon="📊"
+linked = linkage(
+    X_scaled,
+    method='ward'
 )
 
-st.title("📊 Customer Segmentation using Hierarchical Clustering")
-
-st.write("Mall Customer Segmentation Project")
-
-if st.checkbox("Show Dataset"):
-    st.dataframe(df.head())
-
-income = st.number_input(
-    "Annual Income (k$)",
-    min_value=1,
-    max_value=200,
-    value=50
+dendrogram(
+    linked,
+    ax=ax2
 )
 
-score = st.number_input(
-    "Spending Score (1-100)",
-    min_value=1,
-    max_value=100,
-    value=50
+ax2.set_title(
+    "Hierarchical Clustering Dendrogram"
 )
 
-if st.button("Predict Cluster"):
+st.pyplot(fig2)
 
-    point = np.array([[income, score]])
+# ==========================================
+# CLUSTER DISTRIBUTION
+# ==========================================
 
-    point_scaled = scaler.transform(point)
+st.subheader("📊 Cluster Distribution")
 
-    distances = np.linalg.norm(
-        X_scaled - point_scaled,
-        axis=1
+cluster_counts = (
+    pd.Series(clusters)
+    .value_counts()
+    .sort_index()
+)
+
+fig3, ax3 = plt.subplots(
+    figsize=(10,5)
+)
+
+bars = ax3.bar(
+    cluster_counts.index.astype(str),
+    cluster_counts.values
+)
+
+ax3.set_title(
+    "Customers per Cluster"
+)
+
+ax3.set_xlabel(
+    "Cluster"
+)
+
+ax3.set_ylabel(
+    "Count"
+)
+
+for bar in bars:
+
+    height = bar.get_height()
+
+    ax3.text(
+        bar.get_x()+bar.get_width()/2,
+        height,
+        str(height),
+        ha='center'
     )
 
-    nearest_index = np.argmin(distances)
-
-    predicted_cluster = clusters[nearest_index]
-
-    st.success(
-        f"Customer belongs to Cluster {predicted_cluster}"
-    )
+st.pyplot(fig3)
