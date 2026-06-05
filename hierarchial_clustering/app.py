@@ -1,150 +1,310 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import pickle
 import matplotlib.pyplot as plt
 
-from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import AgglomerativeClustering
-from scipy.cluster.hierarchy import dendrogram, linkage
+from scipy.cluster.hierarchy import linkage, dendrogram
+from scipy.spatial.distance import cdist
 
-# -------------------------------
-# Load Dataset
-# -------------------------------
-
-df = pd.read_csv("Mall_Customers.csv")
-
-# -------------------------------
-# Feature Selection
-# -------------------------------
-
-X = df[
-    [
-        "Annual Income (k$)",
-        "Spending Score (1-100)"
-    ]
-]
-
-# -------------------------------
-# Feature Scaling
-# -------------------------------
-
-scaler = StandardScaler()
-
-X_scaled = scaler.fit_transform(X)
-
-# -------------------------------
-# Hierarchical Clustering
-# -------------------------------
-
-hc = AgglomerativeClustering(
-    n_clusters=5,
-    metric="euclidean",
-    linkage="ward"
-)
-
-clusters = hc.fit_predict(X_scaled)
-
-df["Cluster"] = clusters
-
-# -------------------------------
-# Streamlit UI
-# -------------------------------
+# ==========================================
+# PAGE CONFIG
+# ==========================================
 
 st.set_page_config(
-    page_title="Hierarchical Clustering",
-    page_icon="📊"
+    page_title="Hierarchical Clustering Dashboard",
+    page_icon="🌳",
+    layout="wide"
 )
 
-st.title("📊 Customer Segmentation Using Hierarchical Clustering")
+# ==========================================
+# LOAD DATA
+# ==========================================
 
-st.write(
-    "Segment customers based on Income and Spending Score"
+df = pd.read_csv("data/Mall_Customers.csv")
+
+scaler = pickle.load(open("models/scaler.pkl", "rb"))
+
+cluster_centers = pickle.load(
+    open("models/cluster_centers.pkl", "rb")
 )
 
-# -------------------------------
-# Dataset Preview
-# -------------------------------
+# ==========================================
+# CUSTOM CSS
+# ==========================================
 
-if st.checkbox("Show Dataset"):
-    st.dataframe(df.head())
+st.markdown("""
+<style>
 
-# -------------------------------
-# Dendrogram
-# -------------------------------
+.stApp{
+    background-color:#F4F7FC;
+}
 
-if st.checkbox("Show Dendrogram"):
+h1,h2,h3{
+    color:#1F2937 !important;
+}
 
-    fig, ax = plt.subplots(figsize=(10, 5))
+p,label{
+    color:#374151 !important;
+}
 
-    dendrogram(
-        linkage(
-            X_scaled,
-            method="ward"
-        ),
-        ax=ax
+.stButton > button{
+    width:100%;
+    height:3rem;
+    border-radius:12px;
+    font-size:18px;
+    font-weight:600;
+
+    background-color:#C7D2FE !important;   /* pastel lavender */
+    color:#312E81 !important;
+    border:none;
+}
+
+.stButton > button:hover{
+    background-color:#A5B4FC !important;
+    color:#1E1B4B !important;
+}
+
+.custom-card{
+    padding:18px;
+    border-radius:12px;
+    margin-top:10px;
+}
+
+.success-card{
+    background:#DCFCE7;
+    color:#166534;
+    font-weight:bold;
+}
+
+.info-card{
+    background:#DBEAFE;
+    color:#1E40AF;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# TITLE
+# ==========================================
+
+st.title("🌳 Hierarchical Clustering Dashboard")
+
+st.markdown("""
+Customer segmentation using
+**Agglomerative Hierarchical Clustering**
+""")
+
+# ==========================================
+# METRICS
+# ==========================================
+
+c1,c2 = st.columns(2)
+
+with c1:
+    st.metric("Total Customers", len(df))
+
+with c2:
+    st.metric("Clusters", len(cluster_centers))
+
+st.divider()
+
+# ==========================================
+# INPUTS
+# ==========================================
+
+st.subheader("🔍 Predict Customer Segment")
+
+col1,col2 = st.columns(2)
+
+with col1:
+    income = st.slider(
+        "Annual Income (k$)",
+        0,
+        150,
+        60
     )
 
-    ax.set_title("Dendrogram")
-
-    st.pyplot(fig)
-
-# -------------------------------
-# Cluster Visualization
-# -------------------------------
-
-if st.checkbox("Show Clusters"):
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    scatter = ax.scatter(
-        df["Annual Income (k$)"],
-        df["Spending Score (1-100)"],
-        c=df["Cluster"]
+with col2:
+    score = st.slider(
+        "Spending Score",
+        1,
+        100,
+        50
     )
 
-    ax.set_xlabel("Annual Income (k$)")
-    ax.set_ylabel("Spending Score (1-100)")
-    ax.set_title("Customer Segments")
+# ==========================================
+# PREDICTION
+# ==========================================
 
-    st.pyplot(fig)
+if st.button("Predict Segment"):
 
-# -------------------------------
-# Predict Cluster
-# -------------------------------
+    sample = np.array([[income, score]])
 
-st.subheader("Find Customer Cluster")
+    distances = cdist(
+        sample,
+        cluster_centers.values,
+        metric='euclidean'
+    )
 
-income = st.number_input(
-    "Annual Income (k$)",
-    min_value=1,
-    max_value=200,
-    value=50
+    cluster = np.argmin(distances)
+
+    st.markdown(
+        f"""
+        <div class="custom-card success-card">
+        Predicted Cluster : {cluster}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown(
+        f"""
+        <div class="custom-card info-card">
+        Customer belongs to Segment {cluster}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+# ==========================================
+# SCATTER PLOT
+# ==========================================
+
+st.subheader("📈 Customer Segments")
+
+clusters = []
+
+for _, row in df.iterrows():
+
+    point = np.array([
+        [row['Annual Income (k$)'],
+         row['Spending Score (1-100)']]
+    ])
+
+    d = cdist(
+        point,
+        cluster_centers.values,
+        metric='euclidean'
+    )
+
+    clusters.append(np.argmin(d))
+
+fig, ax = plt.subplots(figsize=(10,6))
+
+scatter = ax.scatter(
+    df['Annual Income (k$)'],
+    df['Spending Score (1-100)'],
+    c=clusters,
+    s=80
 )
 
-score = st.number_input(
-    "Spending Score (1-100)",
-    min_value=1,
-    max_value=100,
-    value=50
+ax.scatter(
+    income,
+    score,
+    color='red',
+    marker='X',
+    s=300,
+    label='Selected Customer'
 )
 
-if st.button("Predict Cluster"):
+ax.set_title(
+    "Hierarchical Customer Segmentation"
+)
 
-    point = np.array([[income, score]])
+ax.set_xlabel(
+    "Annual Income (k$)"
+)
 
-    point_scaled = scaler.transform(point)
+ax.set_ylabel(
+    "Spending Score"
+)
 
-    distances = np.linalg.norm(
-        X_scaled - point_scaled,
-        axis=1
+ax.legend()
+
+st.pyplot(fig)
+
+# ==========================================
+# DENDROGRAM
+# ==========================================
+
+st.subheader("🌳 Dendrogram")
+
+sample_df = df.sample(
+    50,
+    random_state=42
+)
+
+X = sample_df[
+    ['Annual Income (k$)',
+     'Spending Score (1-100)']
+]
+
+X_scaled = scaler.transform(X)
+
+fig2, ax2 = plt.subplots(
+    figsize=(12,5)
+)
+
+linked = linkage(
+    X_scaled,
+    method='ward'
+)
+
+dendrogram(
+    linked,
+    ax=ax2
+)
+
+ax2.set_title(
+    "Hierarchical Clustering Dendrogram"
+)
+
+st.pyplot(fig2)
+
+# ==========================================
+# CLUSTER DISTRIBUTION
+# ==========================================
+
+st.subheader("📊 Cluster Distribution")
+
+cluster_counts = (
+    pd.Series(clusters)
+    .value_counts()
+    .sort_index()
+)
+
+fig3, ax3 = plt.subplots(
+    figsize=(10,5)
+)
+
+bars = ax3.bar(
+    cluster_counts.index.astype(str),
+    cluster_counts.values
+)
+
+ax3.set_title(
+    "Customers per Cluster"
+)
+
+ax3.set_xlabel(
+    "Cluster"
+)
+
+ax3.set_ylabel(
+    "Count"
+)
+
+for bar in bars:
+
+    height = bar.get_height()
+
+    ax3.text(
+        bar.get_x()+bar.get_width()/2,
+        height,
+        str(height),
+        ha='center'
     )
 
-    nearest_index = np.argmin(distances)
-
-    predicted_cluster = clusters[
-        nearest_index
-    ]
-
-    st.success(
-        f"Customer belongs to Cluster {predicted_cluster}"
-    )
+st.pyplot(fig3)
